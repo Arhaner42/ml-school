@@ -1,0 +1,126 @@
+from statistics import median
+from timeit import repeat
+
+import numpy as np
+
+def lu(A):
+    # return L, U with A = L @ U (no row swaps)
+    U = np.array(A, dtype = float)
+
+    n = U.shape[0]
+    L = np.eye(n)
+
+    for k in range(n - 1) :
+        pivot = U[k, k]
+        if pivot == 0 :
+            raise Exception("Zero pivot")
+
+        mult = U[(k + 1):, k] / pivot
+        L[(k + 1):, k] = mult
+
+        U[(k + 1):, (k + 1):] -= np.outer(mult, U[k, (k + 1):])
+        U[(k + 1):, k] = 0
+
+    return L, U
+
+def solve_lu(L, U, b):
+    # solve L U x = b by forward and back substitution
+    L = np.array(L, dtype = float)
+    U = np.array(U, dtype = float)
+    b = np.array(b, dtype = float)
+
+    n = b.size
+    x = np.empty_like(b)
+    y = np.empty_like(b)
+
+    #Forward substitution
+    for i in range(n) :
+        y[i] = b[i] - L[i, :i] @ y[:i]
+
+    #Backward substitution
+    for i in range(n - 1, -1, -1) :
+        x[i] = (y[i] - U[i, (i + 1):] @ x[(i + 1):]) / U[i, i]
+
+    return x
+
+def inverseXTX (X) :
+    return np.linalg.inv(X.T.dot(X))
+
+def update_inverse(initial_inv, new_rows) :
+    XTX_inv = initial_inv
+    for row in new_rows :
+        z = XTX_inv.dot(row)
+        XTX_inv = XTX_inv - np.outer(z, z) / (1 + row.dot(z))
+
+    return XTX_inv
+ 
+
+
+rng = np.random.default_rng(67)
+
+if 0:
+
+    for _ in range(100) :
+        A = rng.uniform(-10, 10, size = (6, 6))
+        L, U = lu(A)
+        np.testing.assert_allclose(L @ U, A, rtol=1e-9, atol=1e-10)
+    print("100 tests for LU passed")
+
+if 0:
+    A = np.array([[2, 1, 1], [4, 3, 3], [8, 7, 9]] , dtype = float)
+    L, U = lu(A)
+    print(L)
+    print(U)
+
+if 0:
+    for _ in range(100) :
+        A = rng.uniform(-10, 10, size = (6, 6))
+        b = rng.uniform(-10, 10, size = 6)
+        L, U = lu(A)
+        x = solve_lu(L, U, b)
+
+        np.testing.assert_allclose(A @ x, b, rtol=1e-9, atol=1e-10)
+        np.testing.assert_allclose(x, np.linalg.solve(A, b), rtol=1e-9, atol=1e-10)
+    print("100 test for lu_solve passed")
+
+if 0:
+    A = np.array([[1e-17, 1], [1, 1]], dtype = float)
+    b = np.array([1, 2], dtype = float).T
+    L, U = lu(A)
+    x = solve_lu(L, U, b)
+    print(x)
+
+    print(np.linalg.solve(A, b))
+
+if 0: # swapping first two rows
+    A = np.array([[1, 1], [1e-17, 1]], dtype = float)
+    b = np.array([2, 1], dtype = float).T
+    L, U = lu(A)
+    x = solve_lu(L, U, b)
+    print(x)
+
+    print(np.linalg.solve(A, b))
+
+if 0:
+    X = rng.uniform(-10, 10, size = (200, 50))
+    new_rows = rng.uniform(-10, 10, size = (100, 50))
+    X_new = np.vstack((X, new_rows))
+
+    initial_inv = inverseXTX(X)
+    updated_inv = update_inverse(initial_inv, new_rows)
+    direct_inv = inverseXTX(X_new)
+
+    np.testing.assert_allclose(updated_inv, direct_inv, rtol=1e-9, atol=1e-12)
+    max_error = np.max(np.abs(updated_inv - direct_inv))
+    print(f"Maximum absolute difference: {max_error:.3e}")
+
+    runs = 20
+    update_time = median(repeat(
+        lambda: update_inverse(initial_inv, new_rows), number=runs, repeat=5
+    )) / runs
+    direct_time = median(repeat(
+        lambda: inverseXTX(X_new), number=runs, repeat=5
+    )) / runs
+
+    print(f"100 Sherman–Morrison updates: {update_time * 1e3:.3f} ms")
+    print(f"One inverse from scratch:     {direct_time * 1e3:.3f} ms")
